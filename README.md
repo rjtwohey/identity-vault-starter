@@ -1,1 +1,0 @@
-# identity-vault-starter
