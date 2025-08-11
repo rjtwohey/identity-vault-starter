@@ -11,6 +11,7 @@ import { Observable, Subject } from 'rxjs';
 import { Session } from '../models/session';
 import { PinDialogComponent } from '../pin-dialog/pin-dialog.component';
 import { VaultFactory } from './vault.factory';
+import { App } from '@capacitor/app';
 
 export type UnlockMode = 'BiometricsWithPasscode' | 'CustomPasscode' | 'InMemory' | 'SecureStorage';
 
@@ -22,6 +23,8 @@ export class SessionVaultService {
 
   private lockedSubject: Subject<boolean>;
   private vault: BrowserVault | Vault;
+
+  private pausedAt: number | null = null;
 
   constructor() {
     this.vault = VaultFactory.create();
@@ -38,7 +41,6 @@ export class SessionVaultService {
         key: 'io.ionic.gettingstartediv',
         type: VaultType.SecureStorage,
         deviceSecurityType: DeviceSecurityType.None,
-        lockAfterBackgrounded: 2000,
       });
     } catch {
       await this.vault.clear();
@@ -59,6 +61,24 @@ export class SessionVaultService {
       await modal.present();
       const { data } = await modal.onDidDismiss();
       this.vault.setCustomPasscode(data || '');
+    });
+
+    App.addListener('pause', () => {
+      console.log('App paused');
+      this.pausedAt = Date.now();
+    });
+
+    App.addListener('resume', async () => {
+      console.log('App resumed, checking vault state');
+      if (this.pausedAt) {
+        const now = Date.now();
+        const diff = now - this.pausedAt;
+        if (diff > 60000) { // 1 minute in ms
+          console.log('Locking the vault due to inactivity');
+          await this.lock();
+        }
+        this.pausedAt = null;
+      }
     });
   }
 
